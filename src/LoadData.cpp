@@ -183,7 +183,7 @@ inline std::vector<Eigen::Vector3f> DataLoder::Cal(string ID) {
             Eigen::Matrix<float, 4, 4> A = Eigen::Matrix<float,4,4>::Identity();
             Eigen::Vector4f x;
             A.block<3,4>(1,1) = Cam*RT;
-            b << i,j,Pic[i][j],1;
+            b << j,i,Pic[i][j],1;
 
             x = A.fullPivLu().solve(b);
             Eigen::Vector3f tmp;
