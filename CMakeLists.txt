@@ -14,6 +14,7 @@ aux_source_directory(./src SRCS) # 添加源代码路径
 
 find_package(Eigen3 REQUIRED) # 添加Eigen3依赖
 find_package(OpenCV REQUIRED)
+find_package(OpenMP REQUIRED)
 
 include_directories("/usr/include/opencv4/")
 include_directories("./include")
@@ -25,3 +26,4 @@ add_executable(${PROJECT_NAME} ${SRCS})
 target_link_libraries(${PROJECT_NAME} ${EIGEN3_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} stdc++fs)
+target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)

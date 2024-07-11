@@ -1,4 +1,7 @@
 #include "LoadData.hpp"
+extern void MyLog(string msg);
+extern void MyError(string msg);
+extern bool OUT_LOG,OUT_ERROR;
 enum TYPE{
         CSV,
         TXT,
@@ -12,8 +15,10 @@ std::map<int,string>tailMap={
 namespace zhywytDataLoder{
     void DataLoder::SaveCal(string SaveRoot){
         std::filesystem::path PcdFilePath(SaveRoot);
+        MyLog(string("In fun SaveCal() PicList size: ")+std::to_string(PicListId.size()));
         for(auto PicID:PicListId){
             std::filesystem::path tmp = PcdFilePath.string()+"/"+std::to_string(PicID)+".obj";
+            MyLog(string("Saving file ")+tmp.string());
             auto& data = PcdData[std::to_string(PicID)];
             //data like vector<vector<int>> data(n,vector<int>(6))
             //TODO : save the data to file tmp.string()
@@ -32,12 +37,20 @@ namespace zhywytDataLoder{
         }
     }
     void DataLoder::CalAll(){
+        MyLog(string("In fun CalAll() The Pic num: ")+std::to_string(PicListId.size()));
         for(auto id : PicListId){
             string ID = std::to_string(id);
             int r = id/100;
             int g = id/10%10;
             int b = id%10;
-            auto p = Cal(ID);
+            MyLog(string("Start Cal ")+ID);
+            std::vector<Eigen::Vector3f> p;
+            try{
+                p = Cal(ID);
+            }catch(std::runtime_error e){
+                MyError(e.what());
+            }
+            MyLog(string("End Cal ")+ID);
             for(const auto& pp:p){
                 std::vector<int>line;
                 line[0]=pp[0];
@@ -52,26 +65,61 @@ namespace zhywytDataLoder{
     }
     DataLoder::DataLoder(const string& fileRoot, const string& filePre):FilePre(filePre),FileRoot(fileRoot){
         string DepthPath = FileRoot+FilePre+"out/rgbd/";
-        string PosPath = FileRoot+FilePre+"out/pos/";
+        string PosPath = FileRoot+FilePre+"out/pose/";
         //depth
         std::vector<std::filesystem::path> FileList;
-        
+        MyLog(string("In fun DataLoder() Begin search ")+DepthPath);
         // png is depthData
-        FileList = allFileOfDir(DepthPath,PNG);
-        for(auto file:FileList){
-            string ID = file.filename().string();
-            ID = ID.substr(ID.find("_"),ID.find(".")-ID.find("_"));
-            if(file.string().find("depth")!=std::string::npos)
-                depths[ID]=DataPng(file);
+        try{
+            FileList = allFileOfDir(DepthPath,PNG);
+        }catch(const char*msg){
+            MyError(msg);
+        }catch(const std::exception& e) {
+            MyError(e.what());
         }
-        FileList = allFileOfDir(PosPath,TXT);
+        MyLog(string("In fun DataLoder() Pic Number: ")+std::to_string(FileList.size()));
+        OUT_LOG=false;
+        PicListId.reserve(FileList.size());
+        // #pragma omp parallel for shared(PicListId)
         for(auto file:FileList){
             string ID = file.filename().string();
-            ID = ID.substr(ID.find("_"),ID.find(".")-ID.find("_"));
+            MyLog(string("In fun DataLoder() Begin handle Pic: ")+file.string());
+            ID = ID.substr(ID.find("_")+1,ID.find(".")-ID.find("_")-1);
+            PicListId.push_back(std::stoi(ID));
+            MyLog(string("In fun DataLoder() Solvnig the file name:")+ID);
+            if(file.string().find("depth")!=std::string::npos){
+                try{
+                    depths[ID]=std::move(DataPng(file));
+                }catch(const char*msg){
+                    MyError(msg);
+                }catch(...){
+                    // MyError("Unexcept Error in DataLoder()");
+                }
+            }
+            MyLog(string("In fun DataLoder() Solved the file name: ")+ID);
+        }
+        OUT_LOG=true;
+        MyLog(string("-----Solved all Pic-----"));
+        MyLog(string("In fun DataLoder() Begin search ")+PosPath);
+        try{
+            FileList = allFileOfDir(PosPath,TXT);
+        }catch(const char*msg){
+            MyError(msg);
+        }catch(const std::exception& e) {
+            MyError(e.what());
+        }
+        MyLog(string("In fun DataLoder() Pose Number: ")+std::to_string(FileList.size()));
+        OUT_LOG=false;
+        // #pragma omp parallel for shared(Cams)
+        for(auto file:FileList){
+            string ID = file.filename().string();
+            MyLog(string("In fun DataLoder() Begin handle Cam: ")+file.string());
+            ID = ID.substr(ID.find("_")+1,ID.find(".")-ID.find("_")-1);
+            MyLog(string("In fun DataLoder() Solvnig the file name:")+ID);
             if(file.filename().string().find("cam")!=std::string::npos){
                 ifstream ifs(file);
                 if(!ifs){
-                    throw(string("Can open file")+file.string());
+                    throw(string("In fun DataLoder() Can open file")+file.string());
                 }
                 Eigen::Matrix<float,3,3> camData;
                 for(int i=0;i<9;i++){
@@ -83,7 +131,7 @@ namespace zhywytDataLoder{
             else if(file.filename().string().find("RT")!=std::string::npos){
                 ifstream ifs(file);
                 if(!ifs){
-                    throw(string("Can open file")+file.string());
+                    throw(string("In fun DataLoder() Can open file")+file.string());
                 }
                 Eigen::Matrix<float,3,4> camData;
                 for(int i=0;i<12;i++){
@@ -93,6 +141,8 @@ namespace zhywytDataLoder{
                 ifs.close();
             }
         }
+        OUT_LOG=true;
+        MyLog(string("-----Solved all Pose-----"));
     }
     DataPng::DataPng(std::filesystem::path FilePath=""):path(FilePath){
         cv::Mat depthImage = cv::imread(FilePath,cv::IMREAD_UNCHANGED);     //cv::IMREAD_UNCHANGED确保不改变图像的原始格式
@@ -104,35 +154,45 @@ namespace zhywytDataLoder{
         }
         height = depthImage.rows;
         width = depthImage.cols;
-        data.reserve(height*width);
-        const float* src = depthImage.ptr<float>(0);
+        MyLog(string("Height : ")+std::to_string(height)+" Width : "+std::to_string(width));
         for (int i = 0; i < height; i++){
+            std::vector<float>tmp;
             for (int j = 0; j < width; j++){
-                data[i][j] = src[i * width + j];
+                float dep = static_cast<int>(depthImage.at<uchar>(i,j));
+                tmp.push_back(dep);
             }
+            data.push_back(tmp);
         }
         Cast();
+        MyLog(string("Finished load Pic ")+FilePath.string());
     }
-    inline std::vector<Eigen::Vector3f> DataLoder::Cal(string ID) {
-        std::vector<std::vector<float>>& Pic = depths[ID].data;
-        Eigen::Matrix<float,3,3>& Cam=Cams[ID];
-        Eigen::Matrix<float,3,4>& RT=RTs[ID];
+inline std::vector<Eigen::Vector3f> DataLoder::Cal(string ID) {
+    Eigen::Matrix<float,3,4> RT;
+    std::vector<std::vector<float>> Pic;
+    Eigen::Matrix<float,3,3>Cam;
+    RT = RTs[ID];
+    Pic = depths[ID].data;
+    Cam = Cams[ID];
+    // auto RT = RTs[ID];
+    
+    std::vector<Eigen::Vector3f> P;
 
-        std::vector<Eigen::Vector3f> P;
-        Eigen::Matrix<float,3,4> A=Cam*RT;
-        Eigen::Vector4f x;
-        for(int i=0;i<Pic.size();++i){
-            for(int j=0;j<Pic[i].size();++j){
-                Eigen::Vector3f b;
-                b<<i,j,Pic[i][j];
-                x=A.completeOrthogonalDecomposition().solve(b);
-                Eigen::Vector3f tmp;
-                tmp<<x(0,0),x(1,0),x(2,0);
-                P.push_back(tmp);
-            }
+    for (int i = 0; i < Pic.size(); ++i) {
+        for (int j = 0; j < Pic[i].size(); ++j) {
+            Eigen::Vector4f b;
+            Eigen::Matrix<float, 4, 4> A = Eigen::Matrix<float,4,4>::Identity();
+            Eigen::Vector4f x;
+            A.block<3,4>(1,1) = Cam*RT;
+            b << i,j,Pic[i][j],1;
+
+            x = A.fullPivLu().solve(b);
+            Eigen::Vector3f tmp;
+            tmp << x(1, 1), x(2, 1), x(3, 1);
+            P.push_back(tmp);
         }
-        return P;
     }
+    return P;
+}
     void DataPng::Cast(){//Cast the 
         for(auto& ii:data){
             for(auto& i:ii){
@@ -164,10 +224,10 @@ namespace zhywytDataLoder{
         }
         return files;
     }
-    bool fileIsExist(string fileName){
-        // 0 /* Test for existence.  */
-        return access(fileName.c_str(),F_OK)==0;
-    }
+bool fileIsExist(string fileName){
+    // 0 /* Test for existence.  */
+    return access(fileName.c_str(),F_OK)==0;
+}
     bool MkDir(const std::string& strPath) {
         int i = 0;
         int nDirLen = strPath.length();

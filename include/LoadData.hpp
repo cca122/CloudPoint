@@ -1,6 +1,7 @@
 #ifndef LOAD_DATA
 #define LOAD_DATA
 #include <Eigen/Dense>
+#include <Eigen/LU>
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <map>
@@ -8,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include <omp.h>
 using std::ifstream,std::string;
 // —————————————————————copy right————————————————————————————
 #ifdef _WIN32
