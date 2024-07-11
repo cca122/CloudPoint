@@ -1,8 +1,8 @@
-#include "LoadData.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <Eigen/Dense>
+#include "LoadData.hpp"
 using namespace Eigen;
 using namespace std;
 
@@ -13,7 +13,9 @@ vector<string>DataPres={
     "artwork",
     "bottle"
 };
-
+void MyLog(string msg){
+    cout<<"[Log: ]"<< msg<<endl;
+}
 
 int main(){
     for(int i=0;i<DataPres.size();i++){
@@ -21,6 +23,8 @@ int main(){
         std::vector<std::filesystem::path> DirList;
         try{
             DirList = zhywytDataLoder::allDirOfDir(DataRoot+DataPre);
+            MyLog("Search all file done!");
+            MyLog(string("File numbers:")+to_string(DirList.size()));
         }
         catch(const char*msg){
             cout<<msg<<endl;
@@ -37,8 +41,6 @@ int main(){
                 cout<<msg<<endl;
             }
             zhywytDataLoder::DataLoder(DataRoot,prefillName);
-
         }
-        
     }
 }
